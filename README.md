@@ -1,0 +1,2 @@
+# poll.c
+voting system 
