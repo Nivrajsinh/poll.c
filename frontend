@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Polling System</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h1>Class Poll</h1>
+  <button onclick="createPoll()">Create Poll</button>
+
+  <h2>Vote</h2>
+  <input type="number" id="studentId" placeholder="Student ID">
+  <button onclick="vote(0)">Vote Option A</button>
+  <button onclick="vote(1)">Vote Option B</button>
+
+  <h2>Results</h2>
+  <canvas id="resultsChart" width="400" height="200"></canvas>
+
+  <script>
+    let chart;
+
+    async function createPoll() {
+      await fetch("http://localhost:8888/create");
+      alert("Poll created!");
+      loadResults();
+    }
+
+    async function vote(option) {
+      const studentId = document.getElementById("studentId").value;
+      if (!studentId) return alert("Enter Student ID");
+      let res = await fetch(http://localhost:8888/vote?studentId=${studentId}&option=${option});
+      let text = await res.text();
+      alert(text);
+      loadResults();
+    }
+
+    async function loadResults() {
+      let res = await fetch("http://localhost:8888/results");
+      let data = await res.json();
+
+      const labels = data.options.map(o => o.text);
+      const votes = data.options.map(o => o.votes);
+
+      if (!chart) {
+        const ctx = document.getElementById("resultsChart").getContext("2d");
+        chart = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: labels,
+            datasets: [{
+              label: "Votes",
+              data: votes
+            }]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: { beginAtZero: true }
+            }
+          }
+        });
+      } else {
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = votes;
+        chart.update();
+      }
+    }
+
+    // Auto-refresh every 3 seconds
+    setInterval(loadResults, 3000);
+  </script>
+</body>
+</html>
