@@ -1,0 +1,110 @@
+#include <microhttpd.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#define PORT 8888
+#define MAX_OPTIONS 10
+#define MAX_VOTERS 100
+
+typedef struct {
+    char option[50];
+    int votes;
+} Option;
+
+typedef struct {
+    char title[100];
+    Option options[MAX_OPTIONS];
+    int optionCount;
+    int totalVotes;
+    int voted[MAX_VOTERS];
+} Poll;
+
+Poll poll;  // single poll for simplicity
+
+// Helper to send response
+int send_response(struct MHD_Connection *connection, const char *msg) {
+    struct MHD_Response *response;
+    int ret;
+    response = MHD_create_response_from_buffer(strlen(msg),
+                                               (void*) msg,
+                                               MHD_RESPMEM_PERSISTENT);
+    ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+    MHD_destroy_response(response);
+    return ret;
+}
+
+// Request handler
+int answer_to_connection(void *cls,
+                         struct MHD_Connection *connection,
+                         const char *url,
+                         const char *method,
+                         const char *version,
+                         const char *upload_data,
+                         size_t *upload_data_size,
+                         void **con_cls) {
+    (void)cls; (void)version; (void)upload_data; (void)upload_data_size; (void)con_cls;
+
+    if (strcmp(url, "/create") == 0) {
+        strcpy(poll.title, "Class Poll");
+        poll.optionCount = 2;
+        strcpy(poll.options[0].option, "Option A");
+        poll.options[0].votes = 0;
+        strcpy(poll.options[1].option, "Option B");
+        poll.options[1].votes = 0;
+        poll.totalVotes = 0;
+        memset(poll.voted, 0, sizeof(poll.voted));
+        return send_response(connection, "Poll created successfully!");
+    }
+    else if (strncmp(url, "/vote", 5) == 0) {
+        const char *sid = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "studentId");
+        const char *oid = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "option");
+
+        if (!sid || !oid) return send_response(connection, "Missing params!");
+
+        int studentId = atoi(sid);
+        int option = atoi(oid);
+
+        if (studentId < 0 || studentId >= MAX_VOTERS) return send_response(connection, "Invalid studentId!");
+        if (poll.voted[studentId]) return send_response(connection, "Already voted!");
+        if (option < 0 || option >= poll.optionCount) return send_response(connection, "Invalid option!");
+
+        poll.options[option].votes++;
+        poll.voted[studentId] = 1;
+        poll.totalVotes++;
+
+        return send_response(connection, "Vote recorded!");
+    }
+    else if (strcmp(url, "/results") == 0) {
+        static char buffer[1024];
+        char temp[256];
+        snprintf(buffer, sizeof(buffer), "{ \"title\": \"%s\", \"totalVotes\": %d, \"options\": [",
+                 poll.title, poll.totalVotes);
+
+        for (int i = 0; i < poll.optionCount; i++) {
+            snprintf(temp, sizeof(temp), "{\"text\":\"%s\", \"votes\":%d}%s",
+                     poll.options[i].option, poll.options[i].votes,
+                     (i == poll.optionCount - 1) ? "" : ",");
+            strcat(buffer, temp);
+        }
+        strcat(buffer, "]}");
+
+        return send_response(connection, buffer);
+    }
+
+    return send_response(connection, "Unknown endpoint");
+}
+
+int main() {
+    struct MHD_Daemon *daemon;
+
+    daemon = MHD_start_daemon(MHD_USE_INTERNAL_POLLING_THREAD, PORT, NULL, NULL,
+                              &answer_to_connection, NULL, MHD_OPTION_END);
+    if (NULL == daemon) return 1;
+
+    printf("Server running on http://localhost:%d\n", PORT);
+    getchar();
+
+    MHD_stop_daemon(daemon);
+    return 0;
+}
